@@ -1,6 +1,8 @@
 import streamlit as st
+from dotenv import load_dotenv
 from openai import OpenAI
 import numpy as np
+load_dotenv()
 
 st.title("Exercise 2.2 - Comparing Chunks")
 
@@ -16,12 +18,12 @@ if st.button("Compare"):
 
         # 2. Create an embedding for each chunk of text
         embedding_1 = client.embeddings.create(
-            model="text-embedding-3-small",
+            model="text-embedding-3-large",
             input=text1,
         ).data[0].embedding
 
         embedding_2 = client.embeddings.create(
-            model="text-embedding-3-small",
+            model="text-embedding-3-large",
             input=text2,
         ).data[0].embedding
 

@@ -301,25 +301,61 @@ if st.button("Submit"):
 
 
 # -----------------------------
-# Show saved chunks
+# Show saved chunks (any uploaded document)
 # -----------------------------
 
-if (
-    "num_chunks" in st.session_state
-    and "selected_document" in st.session_state
-):
+if os.path.exists("chunks"):
 
-    selected_document = (
-        st.session_state[
-            "selected_document"
+    document_folders = sorted(
+        [
+            name
+            for name in os.listdir("chunks")
+            if os.path.isdir(os.path.join("chunks", name))
         ]
     )
 
-    num_chunks = (
-        st.session_state[
-            "num_chunks"
-        ]
+else:
+
+    document_folders = []
+
+
+if document_folders:
+
+    # Default to the document just uploaded (if any), otherwise the first one
+    default_document = st.session_state.get(
+        "selected_document",
+        document_folders[0]
     )
+
+    default_index = (
+        document_folders.index(default_document)
+        if default_document in document_folders
+        else 0
+    )
+
+    selected_document = st.selectbox(
+        "Choose a document to view",
+        options=document_folders,
+        index=default_index
+    )
+
+    document_folder = os.path.join(
+        "chunks",
+        selected_document
+    )
+
+    chunk_files = sorted(
+        [
+            file
+            for file in os.listdir(document_folder)
+            if file.startswith("chunk_") and file.endswith(".txt")
+        ],
+        key=lambda name: int(
+            re.search(r"chunk_(\d+)\.txt", name).group(1)
+        )
+    )
+
+    num_chunks = len(chunk_files)
 
 
     st.subheader(
@@ -339,8 +375,7 @@ if (
 
 
     file_path = os.path.join(
-        "chunks",
-        selected_document,
+        document_folder,
         f"chunk_{chunk_num}.txt"
     )
 
@@ -364,4 +399,10 @@ if (
         data=selected_chunk,
         file_name=f"chunk_{chunk_num}.txt",
         mime="text/plain"
+    )
+
+else:
+
+    st.info(
+        "No documents have been uploaded yet."
     )

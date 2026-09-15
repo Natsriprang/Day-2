@@ -14,10 +14,10 @@ load_dotenv()
 # 1. Page title
 # ==================================================
 
-st.title("Building a Positive Law Firm")
+st.title("Summarize by chunk")
 
 st.write(
-    "This document provides the content of Building a Positive Law Firm in chunks."
+    "This page provides the summary of the content of the document you choose."
 )
 
 

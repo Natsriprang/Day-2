@@ -1,23 +1,29 @@
 import streamlit as st
-from dotenv import load_dotenv
-from openai import OpenAI
+import os
+import glob
 import numpy as np
-
+from openai import OpenAI
+from dotenv import load_dotenv
 
 load_dotenv()
 
+# -----------------------------
+# Page title
+# -----------------------------
 
 st.title("Exercise 2.3 - Implementing RAG Manually")
-
 
 st.write(
     "This uses the chunks saved by Exercise 2.1."
 )
 
 
-# --------------------------------------------------
+# -----------------------------
 # Session state
-# --------------------------------------------------
+# -----------------------------
+
+if "selected_document" not in st.session_state:
+    st.session_state.selected_document = None
 
 if "answer" not in st.session_state:
     st.session_state.answer = None
@@ -26,79 +32,124 @@ if "sources" not in st.session_state:
     st.session_state.sources = []
 
 
-# --------------------------------------------------
-# Check if documents exist
-# --------------------------------------------------
+# -----------------------------
+# Find document folders
+# -----------------------------
 
-if (
-    "documents" not in st.session_state
-    or len(st.session_state.documents) == 0
-):
+document_folders = [
+    folder
+    for folder in glob.glob("chunks/*")
+    if os.path.isdir(folder)
+]
+
+
+# -----------------------------
+# No documents
+# -----------------------------
+
+if len(document_folders) == 0:
 
     st.warning(
-        "No documents found. "
-        "Please go to Exercise 2.1 and upload a PDF first."
+        "No documents found. Please go to Exercise 2.1 and upload a PDF first."
     )
+
+
+# -----------------------------
+# Documents found
+# -----------------------------
 
 else:
 
-    # --------------------------------------------------
+    # Get document names
+    document_names = [
+        os.path.basename(folder)
+        for folder in document_folders
+    ]
+
+
+    # -----------------------------
     # Select document
-    # --------------------------------------------------
+    # -----------------------------
 
-    document_names = list(
-        st.session_state.documents.keys()
-    )
-
-
-    # Use the document selected in Exercise 2.1
     if (
-        "selected_document" not in st.session_state
-        or st.session_state.selected_document
+        st.session_state.selected_document
         not in document_names
     ):
-
-        st.session_state.selected_document = (
-            document_names[0]
-        )
+        st.session_state.selected_document = document_names[0]
 
 
     selected_document = st.selectbox(
-        "Select which document to ask about",
+        "Select a document",
         options=document_names,
         index=document_names.index(
             st.session_state.selected_document
-        ),
-        key="rag_document_selector"
+        )
     )
 
 
-    # Remember selected document
-    st.session_state.selected_document = (
+    # Save selected document
+    st.session_state.selected_document = selected_document
+
+
+    # -----------------------------
+    # Find chunks
+    # -----------------------------
+
+    selected_folder = os.path.join(
+        "chunks",
         selected_document
     )
 
 
-    # Get ONLY the chunks belonging to this document
-    chunks = (
-        st.session_state
-        .documents[selected_document]["chunks"]
+    chunk_files = sorted(
+        glob.glob(
+            os.path.join(
+                selected_folder,
+                "chunk_*.txt"
+            )
+        ),
+        key=lambda path: int(
+            os.path.basename(path)
+            .split("_")[1]
+            .split(".")[0]
+        )
     )
+
+
+    # -----------------------------
+    # Load chunks
+    # -----------------------------
+
+    chunks = []
+
+    for path in chunk_files:
+
+        with open(
+            path,
+            "r",
+            encoding="utf-8"
+        ) as f:
+
+            chunks.append(f.read())
 
 
     st.write(
-        f"Using document: **{selected_document}**"
+        f"Loaded {len(chunks)} chunks from **{selected_document}**."
     )
 
 
-    # --------------------------------------------------
-    # Ask question
-    # --------------------------------------------------
+    # -----------------------------
+    # Question
+    # -----------------------------
 
     question = st.text_input(
         "Ask a question about the document"
     )
 
+
+    # -----------------------------
+    # Ask button
+    # -----------------------------
 
     if st.button("Ask"):
 
@@ -110,79 +161,88 @@ else:
 
         else:
 
+            # -----------------------------
+            # OpenAI client
+            # -----------------------------
+
             client = OpenAI()
 
 
-            # --------------------------------------------------
-            # 1. Create embedding for question
-            # --------------------------------------------------
+            # -----------------------------
+            # Create embedding for question
+            # -----------------------------
 
-            question_embedding = np.array(
-                client.embeddings.create(
-                    model="text-embedding-3-large",
-                    input=question,
-                ).data[0].embedding
-            )
+            question_embedding = client.embeddings.create(
+                model="text-embedding-3-large",
+                input=question
+            ).data[0].embedding
 
 
-            # --------------------------------------------------
-            # 2. Create embeddings for this document's chunks
-            # --------------------------------------------------
+            # -----------------------------
+            # Create embeddings for chunks
+            # -----------------------------
 
-            similarities = []
-
+            chunk_embeddings = []
 
             for chunk in chunks:
 
-                chunk_embedding = np.array(
-                    client.embeddings.create(
-                        model="text-embedding-3-large",
-                        input=chunk,
-                    ).data[0].embedding
+                embedding = client.embeddings.create(
+                    model="text-embedding-3-large",
+                    input=chunk
+                ).data[0].embedding
+
+                chunk_embeddings.append(embedding)
+
+
+            # -----------------------------
+            # Calculate cosine similarity
+            # -----------------------------
+
+            question_vector = np.array(
+                question_embedding
+            )
+
+            similarities = []
+
+            for embedding in chunk_embeddings:
+
+                chunk_vector = np.array(
+                    embedding
                 )
 
-
-                similarity = (
-                    np.dot(
-                        question_embedding,
-                        chunk_embedding
-                    )
-                    /
-                    (
-                        np.linalg.norm(
-                            question_embedding
-                        )
-                        *
-                        np.linalg.norm(
-                            chunk_embedding
-                        )
-                    )
+                similarity = np.dot(
+                    question_vector,
+                    chunk_vector
+                ) / (
+                    np.linalg.norm(question_vector)
+                    * np.linalg.norm(chunk_vector)
                 )
-
 
                 similarities.append(similarity)
 
 
-            # --------------------------------------------------
-            # 3. Find top 3 relevant chunks
-            # --------------------------------------------------
+            # -----------------------------
+            # Get Top 3 most relevant chunks
+            # -----------------------------
+
+            top_n = min(3, len(chunks))
 
             top_indices = np.argsort(
                 similarities
-            )[-3:][::-1]
+            )[-top_n:][::-1]
 
 
-            # --------------------------------------------------
-            # 4. Create context
-            # --------------------------------------------------
+            # -----------------------------
+            # Build context
+            # -----------------------------
 
             context = ""
-
 
             for index in top_indices:
 
                 context += (
-                    f"\n\n--- Chunk {index + 1} "
+                    f"\n\n"
+                    f"--- Chunk {index + 1} "
                     f"(similarity: "
                     f"{similarities[index]:.4f}) ---\n"
                 )
@@ -190,88 +250,97 @@ else:
                 context += chunks[index]
 
 
-            # --------------------------------------------------
-            # 5. Ask the model
-            # --------------------------------------------------
+            # -----------------------------
+            # Ask GPT
+            # -----------------------------
 
             response = client.responses.create(
+
                 model="gpt-4o",
+
                 input=(
                     "Answer the question using the relevant "
                     "information from the document excerpts below.\n\n"
 
-                    "The question may use different wording "
-                    "from the document. Use relevant information "
-                    "from the excerpts to answer the question "
-                    "even if the exact words are not present.\n\n"
+                    "The excerpts were retrieved from the document "
+                    "based on their similarity to the question.\n\n"
 
-                    "Only say that the information was not found "
-                    "if the document excerpts genuinely do not "
-                    "contain information that can answer the question.\n\n"
+                    "Use the information in the excerpts to answer "
+                    "the question. The wording of the question does "
+                    "not need to exactly match the wording in the "
+                    "document.\n\n"
 
-                    "After answering, briefly explain what "
-                    "information from the document you used. "
-                    "Include the relevant chunk number as the source.\n\n"
+                    "If the answer is not contained in the provided "
+                    "excerpts, say that the information was not found "
+                    "in the provided document.\n\n"
 
                     f"Document: {selected_document}\n\n"
 
-                    f"Document excerpts:\n{context}\n\n"
+                    f"Document excerpts:\n"
+                    f"{context}\n\n"
 
                     f"Question: {question}"
-                ),
+                )
             )
 
 
-            # --------------------------------------------------
-            # 6. Save answer
-            # --------------------------------------------------
+            # -----------------------------
+            # Save answer
+            # -----------------------------
 
             st.session_state.answer = (
                 response.output_text
             )
 
 
-            # --------------------------------------------------
-            # 7. Save sources
-            # --------------------------------------------------
+            # -----------------------------
+            # Save sources
+            # -----------------------------
 
             st.session_state.sources = [
+
                 (
                     index,
                     similarities[index],
                     chunks[index]
                 )
+
                 for index in top_indices
             ]
 
-      # Display answer
-  
-    if st.session_state.answer is not None:
 
-        st.subheader("Answer")
+# -----------------------------
+# Display answer
+# -----------------------------
+
+if st.session_state.answer is not None:
+
+    st.subheader("Answer")
+
+    st.write(
+        st.session_state.answer
+    )
+
+
+    # -----------------------------
+    # Display sources
+    # -----------------------------
+
+    st.subheader("Sources")
+
+    for (
+        index,
+        similarity,
+        chunk
+    ) in st.session_state.sources:
 
         st.write(
-            st.session_state.answer
+            f"Chunk {index + 1} "
+            f"(similarity: {similarity:.4f})"
         )
 
+        with st.expander(
+            f"View Chunk {index + 1}"
+        ):
 
-        st.subheader("Sources")
-
-
-        for (
-            index,
-            similarity,
-            chunk
-        ) in st.session_state.sources:
-
-            st.write(
-                f"Chunk {index + 1} "
-                f"(similarity: {similarity:.4f})"
-            )
-
-
-            with st.expander(
-                f"View Chunk {index + 1}"
-            ):
-
-                st.write(chunk)
+            st.write(chunk)

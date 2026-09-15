@@ -10,18 +10,11 @@ import glob
 load_dotenv()
 
 
-st.title("Exercise 2.4 - Implementing RAG with Chroma")
+st.title("Building a Positive Law Firm")
 
 
-st.write(
-    "This uses Chroma as the vector database "
-    "to retrieve the most relevant chunks."
-)
-
-
-# --------------------------------------------------
+st.write("This document provides the content of Building a Positive Law Firm in chunks.")
 # 1. Find the saved chunks
-# --------------------------------------------------
 
 chunk_files = sorted(
     glob.glob("chunks/chunk_*.txt"),

@@ -1,45 +1,17 @@
 import streamlit as st
 from pypdf import PdfReader
 import os
-import re
-
 
 st.title("Exercise 2.1")
 
-
-# --------------------------------------------------
-# Session state
-# --------------------------------------------------
-
-if "documents" not in st.session_state:
-    st.session_state.documents = {}
-
-if "selected_document" not in st.session_state:
-    st.session_state.selected_document = None
-
-
-# --------------------------------------------------
-# Upload PDF
-# --------------------------------------------------
-
-uploaded_file = st.file_uploader(
-    "Choose a file",
-    type="pdf"
-)
-
+uploaded_file = st.file_uploader("Choose a file", type="pdf")
 
 chunk_by = st.selectbox(
     "Chunk by type",
-    options=[
-        "Number of pages",
-        "Number of words",
-        "Number of paragraphs"
-    ]
+    options=["Number of pages", "Number of words", "Number of paragraphs"],
 )
 
-
 if chunk_by == "Number of pages":
-
     unit_size = st.slider(
         "Pages per chunk",
         min_value=1,
@@ -48,7 +20,6 @@ if chunk_by == "Number of pages":
     )
 
 elif chunk_by == "Number of words":
-
     unit_size = st.slider(
         "Words per chunk",
         min_value=50,
@@ -58,7 +29,6 @@ elif chunk_by == "Number of words":
     )
 
 else:
-
     unit_size = st.slider(
         "Paragraphs per chunk",
         min_value=1,
@@ -67,110 +37,96 @@ else:
     )
 
 
-# --------------------------------------------------
+# -----------------------------
 # Chunking functions
-# --------------------------------------------------
+# -----------------------------
 
-def chunk_by_pages(pages_text, pages_per_chunk):
+def chunk_by_pages(text_by_page, pages_per_chunk):
 
     chunks = []
 
-    for i in range(
-        0,
-        len(pages_text),
-        pages_per_chunk
-    ):
+    for i in range(0, len(text_by_page), pages_per_chunk):
 
         chunk = "\n\n".join(
-            pages_text[i:i + pages_per_chunk]
+            text_by_page[i:i + pages_per_chunk]
         )
 
-        chunks.append(chunk)
+        if chunk.strip():
+            chunks.append(chunk)
 
     return chunks
 
 
-def chunk_by_words(full_text, words_per_chunk):
+def chunk_by_words(text, words_per_chunk):
 
-    words = full_text.split()
+    words = text.split()
 
     chunks = []
 
-    for i in range(
-        0,
-        len(words),
-        words_per_chunk
-    ):
+    for i in range(0, len(words), words_per_chunk):
 
         chunk = " ".join(
             words[i:i + words_per_chunk]
         )
 
-        chunks.append(chunk)
+        if chunk.strip():
+            chunks.append(chunk)
 
     return chunks
 
 
-def chunk_by_paragraphs(
-    full_text,
-    paragraphs_per_chunk
-):
+def chunk_by_paragraphs(text, paragraphs_per_chunk):
 
     paragraphs = [
         p.strip()
-        for p in full_text.split("\n\n")
-        if p.strip() != ""
+        for p in text.split("\n\n")
+        if p.strip()
     ]
 
     chunks = []
 
-    for i in range(
-        0,
-        len(paragraphs),
-        paragraphs_per_chunk
-    ):
+    for i in range(0, len(paragraphs), paragraphs_per_chunk):
 
         chunk = "\n\n".join(
-            paragraphs[
-                i:i + paragraphs_per_chunk
-            ]
+            paragraphs[i:i + paragraphs_per_chunk]
         )
 
-        chunks.append(chunk)
+        if chunk.strip():
+            chunks.append(chunk)
 
     return chunks
 
 
-# --------------------------------------------------
-# Submit
-# --------------------------------------------------
+# -----------------------------
+# Process PDF
+# -----------------------------
 
 if st.button("Submit"):
 
     if uploaded_file is None:
 
-        st.warning(
-            "Please upload a PDF file before submitting."
-        )
+        st.warning("Please upload a PDF first.")
 
     else:
 
-        # Read PDF
         reader = PdfReader(uploaded_file)
 
-        pages_text = [
-            page.extract_text() or ""
-            for page in reader.pages
-        ]
+        pages = []
 
-        full_text = "\n\n".join(pages_text)
+        for page in reader.pages:
+
+            text = page.extract_text() or ""
+
+            pages.append(text)
+
+        full_text = "\n\n".join(pages)
 
 
         # Create chunks
         if chunk_by == "Number of pages":
 
             chunks = chunk_by_pages(
-                pages_text,
+                pages,
                 unit_size
             )
 
@@ -189,56 +145,33 @@ if st.button("Submit"):
             )
 
 
-        # --------------------------------------------------
-        # Save document information in session state
-        # --------------------------------------------------
+        # -----------------------------
+        # Save chunks
+        # -----------------------------
 
-        filename = uploaded_file.name
+        os.makedirs("chunks", exist_ok=True)
 
-        st.session_state.documents[filename] = {
-            "chunks": chunks,
-            "chunk_by": chunk_by,
-            "unit_size": unit_size
-        }
+        # Remove old chunks first
+        old_chunks = [
+            file
+            for file in os.listdir("chunks")
+            if file.startswith("chunk_")
+            and file.endswith(".txt")
+        ]
 
-
-        # Automatically select the newly uploaded document
-        st.session_state.selected_document = filename
-
-
-        # --------------------------------------------------
-        # Save chunks to separate folder for this document
-        # --------------------------------------------------
-
-        # Make a safe folder name
-        safe_filename = re.sub(
-            r"[^a-zA-Z0-9ก-๙._-]",
-            "_",
-            filename
-        )
-
-        document_folder = os.path.join(
-            "chunks",
-            safe_filename
-        )
-
-        os.makedirs(
-            document_folder,
-            exist_ok=True
-        )
+        for file in old_chunks:
+            os.remove(
+                os.path.join("chunks", file)
+            )
 
 
-        # Save each chunk
-        for i, chunk in enumerate(
-            chunks,
-            start=1
-        ):
+        # Save new chunks
+        for i, chunk in enumerate(chunks, start=1):
+
+            file_path = f"chunks/chunk_{i}.txt"
 
             with open(
-                os.path.join(
-                    document_folder,
-                    f"chunk_{i}.txt"
-                ),
+                file_path,
                 "w",
                 encoding="utf-8"
             ) as f:
@@ -246,139 +179,47 @@ if st.button("Submit"):
                 f.write(chunk)
 
 
+        # Save number of chunks
+        st.session_state["num_chunks"] = len(chunks)
+
+
         st.success(
-            f"Saved {filename} "
-            f"with {len(chunks)} chunk(s)."
+            f"Created {len(chunks)} chunks and saved them in the chunks folder."
         )
 
 
-# --------------------------------------------------
-# Select saved document
-# --------------------------------------------------
+# -----------------------------
+# Show saved chunks
+# -----------------------------
 
-if len(st.session_state.documents) > 0:
+if "num_chunks" in st.session_state:
 
-    st.divider()
+    num_chunks = st.session_state["num_chunks"]
 
-    st.subheader("Saved documents")
-
-
-    document_names = list(
-        st.session_state.documents.keys()
-    )
-
-
-    # Make sure selected document still exists
-    if (
-        st.session_state.selected_document
-        not in document_names
-    ):
-
-        st.session_state.selected_document = (
-            document_names[0]
-        )
-
-
-    selected_document = st.selectbox(
-        "Select which document to view",
-        options=document_names,
-        index=document_names.index(
-            st.session_state.selected_document
-        ),
-        key="document_selector"
-    )
-
-
-    # Remember the selected document
-    st.session_state.selected_document = (
-        selected_document
-    )
-
-
-    # Get chunks belonging to this document
-    selected_chunks = (
-        st.session_state
-        .documents[selected_document]["chunks"]
-    )
-
-
-    # --------------------------------------------------
-    # Select chunk
-    # --------------------------------------------------
+    st.subheader("Saved Chunks")
 
     chunk_num = st.selectbox(
-        "Select which chunk to view",
-        options=list(
-            range(
-                1,
-                len(selected_chunks) + 1
-            )
-        ),
-        key="chunk_selector"
+        "Select a chunk",
+        options=list(range(1, num_chunks + 1))
     )
 
+    file_path = f"chunks/chunk_{chunk_num}.txt"
 
-    selected_chunk = selected_chunks[
-        chunk_num - 1
-    ]
+    with open(
+        file_path,
+        "r",
+        encoding="utf-8"
+    ) as f:
 
+        selected_chunk = f.read()
 
-    # --------------------------------------------------
-    # Display chunk
-    # --------------------------------------------------
-
-    st.subheader(
-        f"{selected_document} — Chunk {chunk_num}"
-    )
 
     st.write(selected_chunk)
 
 
-    # --------------------------------------------------
-    # Download selected chunk
-    # --------------------------------------------------
-
     st.download_button(
-        label=f"Download chunk_{chunk_num}.txt",
+        label="Download this chunk",
         data=selected_chunk,
-        file_name=(
-            f"{selected_document}"
-            f"_chunk_{chunk_num}.txt"
-        ),
-        mime="text/plain",
-        key=(
-            f"download_selected_"
-            f"{selected_document}_"
-            f"{chunk_num}"
-        )
+        file_name=f"chunk_{chunk_num}.txt",
+        mime="text/plain"
     )
-
-
-    # --------------------------------------------------
-    # Download all chunks
-    # --------------------------------------------------
-
-    st.divider()
-
-    st.subheader("Download all chunks")
-
-
-    for i, chunk_text in enumerate(
-        selected_chunks,
-        start=1
-    ):
-
-        st.download_button(
-            label=f"Save chunk_{i}.txt",
-            data=chunk_text,
-            file_name=(
-                f"{selected_document}"
-                f"_chunk_{i}.txt"
-            ),
-            mime="text/plain",
-            key=(
-                f"download_all_"
-                f"{selected_document}_"
-                f"{i}"
-            )
-        )

@@ -244,11 +244,8 @@ else:
                 for index in top_indices
             ]
 
-
-    # --------------------------------------------------
-    # Display answer
-    # --------------------------------------------------
-
+      # Display answer
+  
     if st.session_state.answer is not None:
 
         st.subheader("Answer")
